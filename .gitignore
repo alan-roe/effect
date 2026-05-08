@@ -12,3 +12,4 @@ scratchpad/
 .env*
 .lalph/
 .repos/
+.turbo/

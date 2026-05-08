@@ -31,13 +31,21 @@
   },
   "exports": {
     "./package.json": "./package.json",
-    ".": "./src/index.ts",
-    "./*": "./src/*.ts",
+    ".": {
+      "types": "./build/dts/index.d.ts",
+      "import": "./build/esm/index.js",
+      "default": "./build/esm/index.js"
+    },
+    "./*": {
+      "types": "./build/dts/*.d.ts",
+      "import": "./build/esm/*.js",
+      "default": "./build/esm/*.js"
+    },
     "./internal/*": null
   },
   "scripts": {
     "codegen": "build-utils prepare-v3",
-    "build": "echo 'Consumed from source — no build step in equipment-log'",
+    "build": "tsc -p tsconfig.equipment-log-build.json",
     "build-esm": "tsc -b tsconfig.build.json",
     "build-cjs": "babel build/esm --plugins @babel/transform-export-namespace-from --plugins @babel/transform-modules-commonjs --out-dir build/cjs --source-maps",
     "build-annotate": "babel build/esm --plugins annotate-pure-calls --out-dir build/esm --source-maps",
@@ -57,7 +65,9 @@
     "@effect/platform": "workspace:^",
     "@effect/platform-node": "workspace:^",
     "@tim-smart/openapi-gen": "^0.4.10",
-    "effect": "workspace:^"
+    "@types/node": "^24.12.2",
+    "effect": "workspace:^",
+    "typescript": "^6.0.3"
   },
   "dependencies": {
     "@anthropic-ai/tokenizer": "^0.0.4"
