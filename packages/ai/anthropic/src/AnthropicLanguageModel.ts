@@ -749,6 +749,12 @@ const makeResponse: (
     const parts: Array<Response.PartEncoded> = []
     const citableDocuments = extractCitableDocuments(options.prompt)
 
+    // HAND-PORTED FROM v4 (effect-smol packages/ai/anthropic/src/AnthropicLanguageModel.ts ~L1265, L1313).
+    // Recompute capabilities from the response model id so the response parser agrees with `makeRequest`
+    // about which structured-output path was taken. Cheap (string `includes`) so we don't bother
+    // threading the value through `LanguageModel.ProviderOptions`.
+    const capabilities = getModelCapabilities(response.model)
+
     parts.push({
       type: "response-metadata",
       id: response.id,
@@ -759,22 +765,20 @@ const makeResponse: (
     for (const part of response.content) {
       switch (part.type) {
         case "text": {
-          // The text parts should only be added to the response here if the
-          // response format is `"text"`. If the response format is `"json"`,
-          // then the text parts must instead be added to the response when a
-          // tool call is received.
-          if (options.responseFormat.type === "text") {
-            parts.push({
-              type: "text",
-              text: part.text
-            })
+          // HAND-PORTED FROM v4 (~L1265): text content is always emitted. For native structured
+          // outputs (`output_config.format`), the JSON value lives in this text block and must
+          // not be suppressed. For the synthetic-tool fallback, text may also appear alongside
+          // the `tool_use` block; surfacing it matches v4 behaviour.
+          parts.push({
+            type: "text",
+            text: part.text
+          })
 
-            if (Predicate.isNotNullable(part.citations)) {
-              for (const citation of part.citations) {
-                const source = yield* processCitation(citation, citableDocuments, idGenerator)
-                if (Predicate.isNotUndefined(source)) {
-                  parts.push(source)
-                }
+          if (Predicate.isNotNullable(part.citations)) {
+            for (const citation of part.citations) {
+              const source = yield* processCitation(citation, citableDocuments, idGenerator)
+              if (Predicate.isNotUndefined(source)) {
+                parts.push(source)
               }
             }
           }
@@ -801,9 +805,11 @@ const makeResponse: (
         }
 
         case "tool_use": {
-          // When a `"json"` response format is requested, the JSON that we need
-          // will be returned by the tool call injected into the request
-          if (options.responseFormat.type === "json") {
+          // HAND-PORTED FROM v4 (~L1313): only collapse `tool_use` to text on the synthetic-tool
+          // path. With `output_config.format` (native structured output) the JSON arrives in the
+          // text block above, so any `tool_use` we see here is a genuine user tool call and must
+          // be surfaced as `tool-call`, not as text.
+          if (options.responseFormat.type === "json" && !capabilities.supportsStructuredOutput) {
             parts.push({
               type: "text",
               text: JSON.stringify(part.input)
