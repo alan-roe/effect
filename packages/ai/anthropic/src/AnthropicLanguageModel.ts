@@ -325,28 +325,49 @@ export const make = Effect.fnUntraced(function*(options: {
     function*(providerOptions: LanguageModel.ProviderOptions) {
       const context = yield* Effect.context<never>()
       const config = { model: options.model, ...options.config, ...context.unsafeMap.get(Config.key) }
+      // HAND-PORTED FROM v4 (effect-smol packages/ai/anthropic/src/AnthropicLanguageModel.ts ~L432).
+      // Compute model capabilities once per request so both the synthetic-tool branching below
+      // and the `output_config` attachment further down agree on whether native structured
+      // outputs are supported.
+      const capabilities = getModelCapabilities(config.model)
       const { betas: messageBetas, messages, system } = yield* prepareMessages(providerOptions)
       const { betas: toolBetas, toolChoice, tools } = yield* prepareTools(providerOptions, config)
+      // HAND-PORTED FROM v4 (effect-smol packages/ai/anthropic/src/AnthropicLanguageModel.ts ~L434).
+      // `getOutputFormat` returns `undefined` for the synthetic-tool fallback path; non-undefined
+      // means the model supports native structured outputs and we should attach `output_config.format`.
+      const outputFormat = yield* getOutputFormat({ capabilities, options: providerOptions })
       const responseFormat = providerOptions.responseFormat
-      const request: typeof Generated.BetaCreateMessageParams.Encoded = {
+      // HAND-PORTED FROM v4 (effect-smol packages/ai/anthropic/src/AnthropicLanguageModel.ts ~L982).
+      // Gate the synthetic-tool injection on `!capabilities.supportsStructuredOutput`. When the
+      // model supports native structured outputs we skip the synthetic tool entirely — the request
+      // will instead carry `output_config.format` set below.
+      const useSyntheticTool = responseFormat.type === "json" && !capabilities.supportsStructuredOutput
+      const request: Mutable<typeof Generated.BetaCreateMessageParams.Encoded> = {
         max_tokens: 4096,
         ...config,
         system,
         messages,
-        tools: responseFormat.type === "text"
-          ? tools
-          : [{
+        tools: useSyntheticTool
+          ? [{
             name: responseFormat.objectName,
             description: Tool.getDescriptionFromSchemaAst(responseFormat.schema.ast) ?? "Respond with a JSON object",
             input_schema: Tool.getJsonSchemaFromSchemaAst(responseFormat.schema.ast) as any
-          }],
-        tool_choice: responseFormat.type === "text"
-          ? toolChoice
-          : {
+          }]
+          : tools,
+        tool_choice: useSyntheticTool
+          ? {
             type: "tool",
             name: responseFormat.objectName,
             disable_parallel_tool_use: true
           }
+          : toolChoice
+      }
+      // HAND-PORTED FROM v4 (effect-smol packages/ai/anthropic/src/AnthropicLanguageModel.ts ~L449-L458).
+      // Attach `output_config.format` for models that support native structured outputs.
+      // v4 also threads `output_config.effort` from config, but v3's `Config.Service` does not yet
+      // expose `output_config`, so we only set `format` here.
+      if (Predicate.isNotUndefined(outputFormat)) {
+        request.output_config = { format: outputFormat }
       }
       return { betas: new Set([...messageBetas, ...toolBetas]), request }
     }
