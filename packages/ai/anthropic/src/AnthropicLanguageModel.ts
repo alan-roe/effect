@@ -1760,6 +1760,10 @@ const processCitation: (
 // =============================================================================
 
 // HAND-PORTED FROM v4 (effect-smol packages/ai/anthropic/src/AnthropicLanguageModel.ts ~L2657-2720).
+// Extended beyond v4 to mark claude-sonnet-4-6/4-7, claude-opus-4-6/4-7, and
+// claude-mythos as supporting structured outputs — v4's map predates these
+// releases. Anthropic doc as of 2026-05: structured outputs supported on
+// Sonnet 4.5/4.6/4.7, Opus 4.5/4.6/4.7, Haiku 4.5, Mythos.
 // Capability map gates whether a model uses the native `output_config` structured-output
 // pathway or falls back to the synthetic-tool steering used by older Claude releases.
 interface ModelCapabilities {
@@ -1776,9 +1780,14 @@ interface ModelCapabilities {
  */
 const getModelCapabilities = (modelId: string): ModelCapabilities => {
   if (
+    modelId.includes("claude-sonnet-4-7") ||
+    modelId.includes("claude-sonnet-4-6") ||
     modelId.includes("claude-sonnet-4-5") ||
+    modelId.includes("claude-opus-4-7") ||
+    modelId.includes("claude-opus-4-6") ||
     modelId.includes("claude-opus-4-5") ||
-    modelId.includes("claude-haiku-4-5")
+    modelId.includes("claude-haiku-4-5") ||
+    modelId.includes("claude-mythos")
   ) {
     return {
       maxOutputTokens: 64000,
