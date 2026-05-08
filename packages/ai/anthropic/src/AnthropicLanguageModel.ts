@@ -1754,3 +1754,110 @@ const processCitation: (
     }
   }
 )
+
+// =============================================================================
+// Capabilities
+// =============================================================================
+
+// HAND-PORTED FROM v4 (effect-smol packages/ai/anthropic/src/AnthropicLanguageModel.ts ~L2657-2720).
+// Capability map gates whether a model uses the native `output_config` structured-output
+// pathway or falls back to the synthetic-tool steering used by older Claude releases.
+interface ModelCapabilities {
+  readonly maxOutputTokens: number
+  readonly supportsStructuredOutput: boolean
+  readonly isKnownModel: boolean
+}
+
+/**
+ * Returns the capabilities of a Claude model that are used for defaults and feature selection.
+ *
+ * @see https://docs.claude.com/en/docs/about-claude/models/overview#model-comparison-table
+ * @see https://platform.claude.com/docs/en/build-with-claude/structured-outputs
+ */
+const getModelCapabilities = (modelId: string): ModelCapabilities => {
+  if (
+    modelId.includes("claude-sonnet-4-5") ||
+    modelId.includes("claude-opus-4-5") ||
+    modelId.includes("claude-haiku-4-5")
+  ) {
+    return {
+      maxOutputTokens: 64000,
+      supportsStructuredOutput: true,
+      isKnownModel: true
+    }
+  } else if (modelId.includes("claude-opus-4-1")) {
+    return {
+      maxOutputTokens: 32000,
+      supportsStructuredOutput: true,
+      isKnownModel: true
+    }
+  } else if (
+    modelId.includes("claude-sonnet-4-") ||
+    modelId.includes("claude-3-7-sonnet")
+  ) {
+    return {
+      maxOutputTokens: 64000,
+      supportsStructuredOutput: false,
+      isKnownModel: true
+    }
+  } else if (modelId.includes("claude-opus-4-")) {
+    return {
+      maxOutputTokens: 32000,
+      supportsStructuredOutput: false,
+      isKnownModel: true
+    }
+  } else if (modelId.includes("claude-3-5-haiku")) {
+    return {
+      maxOutputTokens: 8192,
+      supportsStructuredOutput: false,
+      isKnownModel: true
+    }
+  } else if (modelId.includes("claude-3-haiku")) {
+    return {
+      maxOutputTokens: 4096,
+      supportsStructuredOutput: false,
+      isKnownModel: true
+    }
+  } else {
+    return {
+      maxOutputTokens: 4096,
+      supportsStructuredOutput: false,
+      isKnownModel: false
+    }
+  }
+}
+
+// HAND-PORTED FROM v4 (effect-smol packages/ai/anthropic/src/AnthropicLanguageModel.ts ~L2749-2761).
+// Returns the `output_config.format` payload when the model supports native structured outputs,
+// or `undefined` to signal the caller should fall back to the synthetic-tool steering path.
+//
+// NOTE: v4 routes JSON Schema generation through `Tool.getJsonSchemaFromSchema(schema, { transformer })`
+// which doesn't exist in this v3 fork. We use `Tool.getJsonSchemaFromSchemaAst(schema.ast)` to match
+// the rest of this file (see `make` in the Anthropic Language Model section). Both produce
+// `additionalProperties: false` recursively on object schemas, which Anthropic's structured-output
+// endpoint requires.
+const getOutputFormat = (
+  { capabilities, options }: {
+    readonly capabilities: ModelCapabilities
+    readonly options: LanguageModel.ProviderOptions
+  }
+): Effect.Effect<typeof Generated.BetaJsonOutputFormat.Encoded | undefined, AiError.AiError> =>
+  Effect.try({
+    try: () => {
+      if (options.responseFormat.type === "json" && capabilities.supportsStructuredOutput) {
+        const schema = Tool.getJsonSchemaFromSchemaAst(options.responseFormat.schema.ast)
+        return {
+          type: "json_schema" as const,
+          schema: schema as unknown as Record<string, unknown>
+        }
+      }
+      return undefined
+    },
+    catch: (error) =>
+      new AiError.MalformedInput({
+        module: "AnthropicLanguageModel",
+        method: "getOutputFormat",
+        description: error instanceof Error ? error.message : String(error),
+        cause: error
+      })
+  })
