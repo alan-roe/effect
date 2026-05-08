@@ -3658,6 +3658,14 @@ export class BetaWebFetchTool20250910 extends S.Class<BetaWebFetchTool20250910>(
   "type": S.Literal("web_fetch_20250910")
 }) {}
 
+export class BetaJsonOutputFormat extends S.Class<BetaJsonOutputFormat>("BetaJsonOutputFormat")({
+  /**
+   * The JSON schema of the format
+   */
+  "schema": S.Record({ key: S.String, value: S.Unknown }),
+  "type": S.Literal("json_schema")
+}) {}
+
 export class BetaCreateMessageParams extends S.Class<BetaCreateMessageParams>("BetaCreateMessageParams")({
   "model": S.Union(S.String, Model),
   /**
@@ -3737,6 +3745,18 @@ export class BetaCreateMessageParams extends S.Class<BetaCreateMessageParams>("B
    * An object describing metadata about the request.
    */
   "metadata": S.optionalWith(BetaMetadata, { nullable: true }),
+  /**
+   * Configuration options for the model's output, such as the output format.
+   */
+  "output_config": S.optionalWith(
+    S.Struct({
+      /**
+       * A schema to specify Claude's output format in responses. See [structured outputs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs)
+       */
+      "format": S.optionalWith(BetaJsonOutputFormat, { nullable: true })
+    }),
+    { nullable: true }
+  ),
   /**
    * Determines whether to use priority capacity (if available) or standard capacity for this request.
    *
